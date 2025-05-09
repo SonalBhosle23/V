@@ -1,0 +1,127 @@
+USE [ETL]
+GO
+/****** Object:  StoredProcedure [ETL].[GetDeltaIndicator]    Script Date: 9/04/2021 2:46:26 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+/*********************************************************************************************************
+Name:		[ETL].[GetDeltaIndicator]
+
+Description: Get the latest Delta indicator value for a given table and field.  Use the DefaultValue if it
+	doesn't already exist.
+
+Input:
+	@SourceSystem - Identifies the source system
+	@TargetSystem - Identifies the target database, typically EDS or EDW
+	@PackageName - Name of the package calling this
+	@ExecutionID - The execution GUID generated when the SSIS package is run
+	@DefaultValue - The default value if there isn't an existing DeltaIndicator record
+	@TargetTableName [Optional] - The name of the table with which incremental loads are to be done
+	@SourceIndicatorField [Optional] - The name of the field used for comparison
+
+Usage:
+	EXEC [ETL].[GetDeltaIndicator]
+		@SourceSystem = 'SAAM'
+		,@TargetSystem = 'EDS'
+		,@PackageName = 'SAAM - EDS - bms_9999999_101'
+		,@ExecutionID = 'A0E1B2DA-9194-49F4-8529-E452490BB240'
+		,@DefaultValue = '1900-01-01'
+		,@TargetTableName = 'bms_9999999_101'
+		,@SourceIndicatorField = 'bms_LastModified'
+			
+The following tables are (potentially) updated by this procedure:
+	 - [ETL].[DeltaIndicator]
+
+Modification History:
+----------------------------------------------------------------------------------------------------------
+Version	Date		Name				Modification
+----------------------------------------------------------------------------------------------------------
+1.0		17May2019	S.Siao (DWS)		Initial Version. (Based off EDW.audit.GetDeltaIndicator)
+1.1		30May2019	S.Siao (DWS)		Updated to return IsDeleteEnforced flag
+*********************************************************************************************************/
+ALTER PROCEDURE [ETL].[GetDeltaIndicator]
+(
+	@SourceSystem varchar(20)
+	,@TargetSystem varchar(20)
+	,@PackageName varchar(100)
+	,@ExecutionID uniqueidentifier
+	,@DefaultValue varchar(50)
+	,@TargetTableName varchar(100) = NULL
+	,@SourceIndicatorField varchar(100) = NULL
+)
+AS
+BEGIN
+	SET NOCOUNT ON;
+	SET XACT_ABORT ON;
+
+	DECLARE
+		@intErrorCode int = 0
+		,@intRecordCount int = 0
+		,@strErrorMessage varchar(2000) = NULL
+		,@strIndicatorValue varchar(50) = NULL
+		,@blnIsPackageActive bit = NULL
+		,@blnIsDeleteEnforced bit = NULL
+	;
+
+	SELECT
+		@strIndicatorValue = IndicatorValue,
+		@blnIsPackageActive = IsPackageActive,
+		@blnIsDeleteEnforced = IsDeleteEnforced
+	FROM [ETL].[DeltaIndicator]
+	WHERE SourceSystem = @SourceSystem
+		AND TargetSystem = @TargetSystem
+		AND PackageName = @PackageName
+	;
+
+	SELECT @intErrorCode = @@ERROR, @intRecordCount = @@ROWCOUNT;
+
+	IF @intErrorCode <> 0
+	BEGIN
+		SELECT @strErrorMessage = 'Error retrieving Delta Indicator value.';
+		RAISERROR('%s failed: %s.', 16, 1, @PackageName, @strErrorMessage);
+	END;
+
+	IF @intRecordCount = 0
+	BEGIN
+		BEGIN TRANSACTION;
+
+		INSERT INTO [ETL].[DeltaIndicator] (SourceSystem, TargetSystem, PackageName, IndicatorValue, ExecutionID, TargetTableName, SourceIndicatorField, ETLCreated, IsPackageActive, IsDeleteEnforced)
+		VALUES (@SourceSystem, @TargetSystem, @PackageName, @DefaultValue, @ExecutionID, @TargetTableName, @SourceIndicatorField, SYSDATETIME(), 1, 1);
+
+		SELECT @intRecordCount = @@ROWCOUNT, @intErrorCode = @@ERROR;
+
+		IF @intErrorCode <> 0 OR @intRecordCount = 0
+		BEGIN
+			SELECT @strErrorMessage = 'Error inserting default Delta Indicator value.';
+			RAISERROR('%s failed: %s.', 16, 1, @PackageName, @strErrorMessage);
+
+			IF @@TRANCOUNT > 0 
+				ROLLBACK TRANSACTION;
+		END;
+
+		IF @@TRANCOUNT > 0 
+			COMMIT TRANSACTION;
+
+		SELECT
+			@strIndicatorValue = IndicatorValue,
+			@blnIsPackageActive = IsPackageActive,
+			@blnIsDeleteEnforced = IsDeleteEnforced
+		FROM [ETL].[DeltaIndicator]
+		WHERE SourceSystem = @SourceSystem
+			AND TargetSystem = @TargetSystem
+			AND PackageName = @PackageName
+		;
+	END
+
+	SELECT 
+		@strIndicatorValue AS IndicatorValue,
+		@blnIsPackageActive AS IsPackageActive,
+		@blnIsDeleteEnforced AS IsDeleteEnforced
+	;
+END

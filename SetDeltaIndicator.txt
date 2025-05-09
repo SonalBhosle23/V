@@ -1,0 +1,88 @@
+USE [ETL]
+GO
+/****** Object:  StoredProcedure [ETL].[SetDeltaIndicator]    Script Date: 9/04/2021 2:48:19 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+/*********************************************************************************************************
+Name:		[ETL].[SetDeltaIndicator]
+
+Description: Updates the DeltaIndicator record for a given set of parameters
+
+Input:
+	@SourceSystem - Identifies the source system
+	@TargetSystem - Identifies the target database, typically EDS or EDW
+	@PackageName - Name of the package calling this
+	@ExecutionID - The execution GUID generated when the SSIS package is run
+	@PackageName - Name of the package calling this
+	@IndicatorValue - The new indicator value to be used in the next run
+
+Usage:
+	EXEC [ETL].[SetDeltaIndicator]
+		@SourceSystem = 'SAAM'
+		,@TargetSystem = 'EDS'
+		,@PackageName = 'SAAM - EDS - bms_9999999_101'
+		,@ExecutionID = 'A0E1B2DA-9194-49F4-8529-E452490BB240'
+		,@IndicatorValue = '2017-08-22'
+
+			
+The following tables are (potentially) updated by this procedure:
+	 - [ETL].[DeltaIndicator]
+
+Modification History:
+----------------------------------------------------------------------------------------------------------
+Version	Date		Name				Modification
+----------------------------------------------------------------------------------------------------------
+1.0		17May2019	S.Siao (DWS)		Initial Version. (Based off EDW.audit.SetDeltaIndicator)
+*********************************************************************************************************/
+ALTER PROCEDURE [ETL].[SetDeltaIndicator]
+(
+	@SourceSystem varchar(20)
+	,@TargetSystem varchar(20)
+	,@PackageName varchar(100)
+	,@ExecutionID uniqueidentifier
+	,@IndicatorValue varchar(50)
+	,@DefaultValue varchar(50)
+)
+AS
+BEGIN
+	SET NOCOUNT ON;
+	SET XACT_ABORT ON;
+
+	DECLARE
+		@intErrorCode int = 0
+		,@intRecordCount int = 0
+		,@strErrorMessage varchar(2000) = NULL
+	;
+
+	SET @IndicatorValue = COALESCE(NULLIF(@IndicatorValue,''), @DefaultValue);
+
+	BEGIN TRANSACTION;
+
+	UPDATE [ETL].[DeltaIndicator] SET
+		IndicatorValue = @IndicatorValue,
+		ExecutionID = @ExecutionID,
+		ETLUpdated = SYSDATETIME()
+	WHERE SourceSystem = @SourceSystem
+		AND TargetSystem = @TargetSystem
+		AND PackageName = @PackageName
+	;
+
+	SELECT @intRecordCount = @@ROWCOUNT, @intErrorCode = @@ERROR;
+
+	IF @intErrorCode <> 0 OR @intRecordCount = 0
+	BEGIN
+		SELECT @strErrorMessage = 'Error updating Delta Indicator value.';
+		RAISERROR('%s failed: %s.', 16, 1, @PackageName, @strErrorMessage);
+
+		IF @@TRANCOUNT > 0 
+			ROLLBACK TRANSACTION;
+	END;
+
+	IF @@TRANCOUNT > 0 
+		COMMIT TRANSACTION;
+END

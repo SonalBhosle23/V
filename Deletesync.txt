@@ -1,0 +1,106 @@
+USE [EDW]
+GO
+/****** Object:  StoredProcedure [Customer].[DeleteSync_Product]    Script Date: 9/04/2021 2:31:07 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+/***************************************************************************************************************************************************
+Name: [Customer].[DeleteSync_Product]
+
+Description: Perform delete sync between [Customer].[Stage_Product] to the [Customer].[Product] table proper.
+	Delete Type: Hard
+
+	NOTE: You must do a FULL load of the SOURCE keys to the Stage table in order for this to operate properly.
+
+UNMODIFIED AUTO-GEN (remove this line if code has been customised since it was generated to protect your changes from accidental over-write)
+
+EXEC ETL28GenerateDeleteSyncTSQL
+	 @vstrSchemaName='Customer', 
+	 @vstrEntityNamePattern='Product', 
+	 @vstrStageTableSchema='Customer', 
+	 @vstrStageTablePrefix='Stage_', 
+	 @vstrAuthor='VBhosle',
+	 @vstrTargetSchema='Customer';
+
+The following tables are (potentially) updated by this procedure:
+	 - [Customer].[Stage_Product]
+	 - [Customer].[Product]
+
+Parameters: 
+
+Modification History:
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+Version	Date		Name				Modification
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+1.0		03Dec2019	VBhosle		Initial Version (auto-generated via ETL28GenerateDeleteSyncTSQL)
+****************************************************************************************************************************************************/
+ALTER PROCEDURE [Customer].[DeleteSync_Product] AS
+BEGIN
+	SET NOCOUNT ON;
+
+	DECLARE
+		@intRowCount int, 
+		@ErrorNumber int = 0,
+		@ErrorSeverity int,  
+		@ErrorState int,
+		@ErrorProcedure varchar(128),
+		@ErrorLine int,
+		@ErrorMessage nvarchar(2000),
+		@ErrorString nvarchar(3000);
+		
+	--=================================================================================================
+	-- Check there are records in the staging table to compare
+	--=================================================================================================
+	SELECT @intRowCount = COUNT(1) FROM [Customer].[Stage_Product];
+
+	--=================================================================================================
+	-- Do the delete (either soft or hard depending on the table type)
+	--=================================================================================================
+	IF @intRowCount > 0
+	BEGIN
+		BEGIN TRANSACTION;
+
+		BEGIN TRY
+
+			DELETE [Customer].[Product]
+			FROM [Customer].[Product] AS T
+			WHERE NOT EXISTS(
+				SELECT 1
+				FROM [Customer].[Stage_Product] AS S
+				WHERE T.[ProductCategory] = S.[ProductCategory]
+					AND T.[ProductType] = S.[ProductType]
+					AND T.[ProductSubType] = S.[ProductSubType]
+			)
+				AND T.[ProductKey] > 0
+				AND T.[ETLIsInferredMember] = 0;
+
+			IF @@TRANCOUNT > 0
+			BEGIN
+				COMMIT TRANSACTION;
+			END
+		END TRY
+		BEGIN CATCH
+			IF @@TRANCOUNT > 0
+			BEGIN
+				ROLLBACK TRANSACTION;
+			END
+
+			SELECT  
+				@ErrorNumber		= ERROR_NUMBER() 
+				,@ErrorSeverity		= ERROR_SEVERITY() 
+				,@ErrorState		= ERROR_STATE()   
+				,@ErrorProcedure	= ERROR_PROCEDURE()   
+				,@ErrorLine			= ERROR_LINE() 
+				,@ErrorMessage		= ERROR_MESSAGE()
+			;
+
+			SET @ErrorString = @ErrorMessage + ' at line ' + CONVERT (NVARCHAR, @ErrorLine) + ' in ' + @ErrorProcedure;
+			
+			RAISERROR (@ErrorString,  @ErrorSeverity, 1);
+		END CATCH
+	END
+	
+	RETURN (@ErrorNumber);
+END
+

@@ -1,0 +1,40 @@
+USE [ETL]
+GO
+
+/****** Object:  Table [ETL].[DeltaIndicator]    Script Date: 9/04/2021 2:49:45 PM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE TABLE [ETL].[DeltaIndicator](
+	[DeltaIndicatorID] [int] IDENTITY(1,1) NOT NULL,
+	[SourceSystem] [varchar](20) NOT NULL,
+	[TargetSystem] [varchar](20) NOT NULL,
+	[PackageName] [varchar](100) NOT NULL,
+	[IndicatorValue] [varchar](50) NOT NULL,
+	[ExecutionID] [uniqueidentifier] NOT NULL,
+	[TargetTableName] [varchar](100) NULL,
+	[SourceIndicatorField] [varchar](100) NULL,
+	[IsDeleteEnforced] [bit] NULL,
+	[IsPackageActive] [bit] NULL,
+	[ETLCreated] [datetime2](7) NULL,
+	[ETLUpdated] [datetime2](7) NULL,
+ CONSTRAINT [PK_DeltaIndicator] PRIMARY KEY CLUSTERED 
+(
+	[DeltaIndicatorID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY],
+ CONSTRAINT [UQ_DeltaIndicator] UNIQUE NONCLUSTERED 
+(
+	[SourceSystem] ASC,
+	[TargetSystem] ASC,
+	[PackageName] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Execution instance GUID of the calling SSIS package' , @level0type=N'SCHEMA',@level0name=N'ETL', @level1type=N'TABLE',@level1name=N'DeltaIndicator', @level2type=N'COLUMN',@level2name=N'ExecutionID'
+GO
+
+
